@@ -1,0 +1,6 @@
+.env
+.vscode
+bin
+debug
+gin-bin
+vendor
