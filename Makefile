@@ -2,7 +2,7 @@
 
 BIN_NAME=oidc-ingress
 
-VERSION := $(shell grep "const Version " pkg/utils/version.go | sed -E 's/.*"(.+)"$$/\1/')
+VERSION := $(shell grep "const Version " cmd/**/version.go | sed -E 's/.*"(.+)"$$/\1/')
 GIT_COMMIT=$(shell git rev-parse HEAD)
 GIT_DIRTY=$(shell test -n "`git status --porcelain`" && echo "+CHANGES" || true)
 IMAGE_NAME := "pwillie/oidc-ingress"

@@ -22,10 +22,17 @@ func NewRouter(logger *logrus.Logger) *chi.Mux {
 		render.PlainText(w, r, "sup")
 	})
 
-	r.Get("/internal/healthz", func(w http.ResponseWriter, r *http.Request) {
-		render.NoContent(w, r)
-	})
-	r.Get("/internal/metrics", promhttp.Handler().ServeHTTP)
+	i := chi.NewRouter()
+	i.Get("/internal/healthz", noContent())
+	i.Get("/internal/metrics", promhttp.Handler().ServeHTTP)
+
+	r.Mount("/internal", i)
 
 	return r
+}
+
+func noContent() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		render.NoContent(w, r)
+	}
 }

@@ -13,7 +13,6 @@ import (
 	"github.com/go-chi/valve"
 	"github.com/namsral/flag"
 	"github.com/pwillie/oidc-ingress/pkg/handlers"
-	"github.com/pwillie/oidc-ingress/pkg/utils"
 )
 
 const (
@@ -35,8 +34,8 @@ func init() {
 func main() {
 	flag.Parse()
 
+	PrintVersion()
 	if versionFlag {
-		utils.PrintVersion()
 		return
 	}
 
