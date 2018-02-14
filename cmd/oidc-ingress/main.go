@@ -10,8 +10,10 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/go-chi/chi"
+	"github.com/go-chi/render"
 	"github.com/go-chi/valve"
 	"github.com/namsral/flag"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/pwillie/oidc-ingress/pkg/handlers"
 )
 
@@ -20,14 +22,16 @@ const (
 )
 
 var (
-	clientConfigs string
-	listenAddress string
-	versionFlag   bool
+	clientConfigs   string
+	listenAddress   string
+	internalAddress string
+	versionFlag     bool
 )
 
 func init() {
 	flag.StringVar(&clientConfigs, "clients", "", "OIDC clients config expressed in yaml")
 	flag.StringVar(&listenAddress, "listen", ":8000", "Listen address")
+	flag.StringVar(&internalAddress, "internal", ":9000", "Internal listen address")
 	flag.BoolVar(&versionFlag, "version", false, "Version")
 }
 
@@ -69,6 +73,15 @@ func main() {
 	logger.Infof("Starting server at: %s", listenAddress)
 	srv := http.Server{Addr: listenAddress, Handler: chi.ServerBaseContext(baseCtx, r)}
 
+	i := chi.NewRouter()
+	i.Get("/internal/healthz", func(w http.ResponseWriter, r *http.Request) {
+		render.NoContent(w, r)
+	})
+	i.Get("/internal/metrics", promhttp.Handler().ServeHTTP)
+
+	logger.Infof("Starting monitoring server at: %s", internalAddress)
+	mon := http.Server{Addr: internalAddress, Handler: chi.ServerBaseContext(baseCtx, i)}
+
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	go func() {
@@ -85,6 +98,7 @@ func main() {
 
 			// start http shutdown
 			srv.Shutdown(ctx)
+			mon.Shutdown(ctx)
 
 			// verify, in worst case call cancel via defer
 			select {
@@ -94,6 +108,9 @@ func main() {
 
 			}
 		}
+	}()
+	go func() {
+		mon.ListenAndServe()
 	}()
 	srv.ListenAndServe()
 }

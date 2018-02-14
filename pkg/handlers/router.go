@@ -7,7 +7,6 @@ import (
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/render"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func NewRouter(logger *logrus.Logger) *chi.Mux {
@@ -22,17 +21,5 @@ func NewRouter(logger *logrus.Logger) *chi.Mux {
 		render.PlainText(w, r, "sup")
 	})
 
-	i := chi.NewRouter()
-	i.Get("/internal/healthz", noContent())
-	i.Get("/internal/metrics", promhttp.Handler().ServeHTTP)
-
-	r.Mount("/internal", i)
-
 	return r
-}
-
-func noContent() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		render.NoContent(w, r)
-	}
 }
