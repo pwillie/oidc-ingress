@@ -8,6 +8,7 @@ import (
 
 	oidc "github.com/coreos/go-oidc"
 	"github.com/ghodss/yaml"
+	"github.com/go-chi/chi"
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
 )
@@ -17,16 +18,15 @@ type (
 		Provider     *oidc.Provider
 		ClientID     string
 		ClientSecret string
+		NoRedirect   bool
+		Scopes       []string
 	}
 	Oidc struct {
 		clients map[string]*OidcClient
 	}
 )
 
-const (
-	cookieName      = "jwt"
-	clientParamName = "client"
-)
+const cookieName = "jwt"
 
 var (
 	state = "foobar" // TODO: Don't do this in production.
@@ -37,6 +37,8 @@ func NewOidcHandler(config string) (*Oidc, error) {
 		Provider     string
 		ClientID     string
 		ClientSecret string
+		NoRedirect   bool
+		Scopes       []string
 	}
 	err := yaml.Unmarshal([]byte(config), &clientConfigs)
 	if err != nil {
@@ -48,6 +50,9 @@ func NewOidcHandler(config string) (*Oidc, error) {
 	clients := make(map[string]*OidcClient)
 
 	for _, c := range clientConfigs {
+		if len(c.Scopes) == 0 {
+			c.Scopes = []string{oidc.ScopeOpenID}
+		}
 		_, ok := providers[c.Provider]
 		if !ok {
 			// logger.Info(fmt.Sprintf("Initialising OIDC discovery endpoint: %s", c.Provider))
@@ -60,6 +65,8 @@ func NewOidcHandler(config string) (*Oidc, error) {
 			Provider:     providers[c.Provider],
 			ClientID:     c.ClientID,
 			ClientSecret: c.ClientSecret,
+			NoRedirect:   c.NoRedirect,
+			Scopes:       c.Scopes,
 		}
 		// logger.Info(fmt.Sprintf("ClientID: %v, Provider: %v\n", c.ClientID, c.Provider))
 	}
@@ -79,7 +86,7 @@ func (c OidcClient) verifyToken(token string) error {
 	return err
 }
 
-func redirectURL(r *http.Request, clientID string) string {
+func (c OidcClient) redirectURL(r *http.Request) string {
 	host := r.Host
 	if h := r.Header.Get("X-Original-Url"); h != "" {
 		u, err := url.Parse(h)
@@ -87,12 +94,15 @@ func redirectURL(r *http.Request, clientID string) string {
 			host = u.Hostname()
 		}
 	}
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
+	var rd string
+	if !c.NoRedirect {
+		rd = r.URL.Query().Get("rd")
+		if rd != "" {
+			rd = "?rd=" + rd
+		}
 	}
-	return fmt.Sprintf("%v://%v/auth/callback?%v=%v&rd=%v",
-		scheme, host, clientParamName, clientID, r.URL.Query().Get("rd"),
+	return fmt.Sprintf("https://%v/auth/callback/%v%v",
+		host, c.ClientID, rd,
 	)
 }
 
@@ -102,14 +112,14 @@ func (c OidcClient) oAuth2Config(redirect string) *oauth2.Config {
 		ClientSecret: c.ClientSecret,
 		Endpoint:     c.Provider.Endpoint(),
 		RedirectURL:  redirect,
-		Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "groups", "offline_access"},
+		Scopes:       c.Scopes,
 	}
 }
 
 // Handlers
 
 func (o Oidc) VerifyHandler(w http.ResponseWriter, r *http.Request) {
-	clientID := r.URL.Query().Get(clientParamName)
+	clientID := chi.URLParam(r, "clientid")
 	if config, ok := o.clients[clientID]; ok {
 		token, err := r.Cookie(cookieName)
 		if token != nil {
@@ -126,7 +136,7 @@ func (o Oidc) VerifyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (o Oidc) SigninHandler(w http.ResponseWriter, r *http.Request) {
-	clientID := r.URL.Query().Get(clientParamName)
+	clientID := chi.URLParam(r, "clientid")
 	if config, ok := o.clients[clientID]; ok {
 		token, err := r.Cookie(cookieName)
 		if token != nil {
@@ -140,7 +150,7 @@ func (o Oidc) SigninHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		http.Redirect(w, r, config.oAuth2Config(redirectURL(r, clientID)).AuthCodeURL(state), http.StatusFound)
+		http.Redirect(w, r, config.oAuth2Config(config.redirectURL(r)).AuthCodeURL(state), http.StatusFound)
 		return
 	}
 	w.WriteHeader(http.StatusInternalServerError)
@@ -153,9 +163,9 @@ func (o Oidc) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "Invalid state")
 	}
 
-	clientID := r.URL.Query().Get(clientParamName)
+	clientID := chi.URLParam(r, "clientid")
 	if config, ok := o.clients[clientID]; ok {
-		oauth2Token, err := config.oAuth2Config(redirectURL(r, clientID)).Exchange(context.Background(), r.URL.Query().Get("code"))
+		oauth2Token, err := config.oAuth2Config(config.redirectURL(r)).Exchange(context.Background(), r.URL.Query().Get("code"))
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprintf(w, "Failed to exchange token: %s", err.Error())
@@ -184,7 +194,7 @@ func (o Oidc) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, r.URL.Query().Get("rd"), http.StatusFound)
 			return
 		}
-		w.WriteHeader(http.StatusOK)
+		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
 	w.WriteHeader(http.StatusForbidden)

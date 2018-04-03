@@ -66,9 +66,9 @@ func main() {
 	if err != nil {
 		logger.WithError(err).Fatal("Failed to initialise OIDC handler")
 	}
-	r.Get("/auth/verify", oidc.VerifyHandler)
-	r.Get("/auth/signin", oidc.SigninHandler)
-	r.Get("/auth/callback", oidc.CallbackHandler)
+	r.Get("/auth/verify/{clientid}", oidc.VerifyHandler)
+	r.Get("/auth/signin/{clientid}", oidc.SigninHandler)
+	r.Get("/auth/callback/{clientid}", oidc.CallbackHandler)
 
 	logger.Infof("Starting server at: %s", listenAddress)
 	srv := http.Server{Addr: listenAddress, Handler: chi.ServerBaseContext(baseCtx, r)}

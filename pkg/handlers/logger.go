@@ -28,26 +28,14 @@ func (l *StructuredLogger) NewLogEntry(r *http.Request) middleware.LogEntry {
 
 	logFields["ts"] = time.Now().UTC().Format(time.RFC1123)
 
-	if reqID := middleware.GetReqID(r.Context()); reqID != "" {
-		logFields["req_id"] = reqID
-	}
-
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	logFields["http_scheme"] = scheme
 	logFields["http_proto"] = r.Proto
-	logFields["http_method"] = r.Method
+	logFields["http_method"] = r.Header.Get("X-Original-Method")
 
 	logFields["remote_addr"] = r.RemoteAddr
-	logFields["user_agent"] = r.UserAgent()
 
-	logFields["uri"] = fmt.Sprintf("%s://%s%s", scheme, r.Host, r.RequestURI)
+	logFields["uri"] = r.Header.Get("X-Original-URL")
 
 	entry.Logger = entry.Logger.WithFields(logFields)
-
-	// entry.Logger.Infoln("request started")
 
 	return entry
 }
