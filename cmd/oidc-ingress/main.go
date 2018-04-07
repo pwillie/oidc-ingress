@@ -74,10 +74,10 @@ func main() {
 	srv := http.Server{Addr: listenAddress, Handler: chi.ServerBaseContext(baseCtx, r)}
 
 	i := chi.NewRouter()
-	i.Get("/internal/healthz", func(w http.ResponseWriter, r *http.Request) {
+	i.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		render.NoContent(w, r)
 	})
-	i.Get("/internal/metrics", promhttp.Handler().ServeHTTP)
+	i.Get("/metrics", promhttp.Handler().ServeHTTP)
 
 	logger.Infof("Starting monitoring server at: %s", internalAddress)
 	mon := http.Server{Addr: internalAddress, Handler: chi.ServerBaseContext(baseCtx, i)}
